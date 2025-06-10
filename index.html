@@ -417,6 +417,10 @@
         function handleTabClick(e) {
             if (!e.target.matches('button[data-tab]')) return;
             AppState.profile.activeTab = e.target.dataset.tab;
+            renderMealPanels();
+             document.querySelectorAll('#meal-tabs button').forEach(btn => {
+                btn.classList.toggle('tab-active', btn.dataset.tab === AppState.profile.activeTab);
+            });
             saveProfileState();
         }
         
@@ -450,15 +454,16 @@
 
         const signOutUser = () => { signOut(auth); };
         
-        async function loadDay(date) {
+        function loadDay(date) {
             AppState.selectedDate = date;
+            AppState.calendarDisplayDate = new Date(date.getFullYear(), date.getMonth(), 1);
             const dateString = date.toISOString().split('T')[0];
             if (dayUnsubscribe) dayUnsubscribe();
             
             const docRef = doc(db, 'users', userId, 'essensplan', dateString);
             dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
                 if(snapshot.exists()) {
-                    AppState.meals = snapshot.data().meals;
+                    AppState.meals = snapshot.data().meals || JSON.parse(JSON.stringify(defaultMeals));
                 } else {
                     AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
                 }
@@ -490,34 +495,39 @@
                 const appContainer = document.getElementById('app-container');
                 const loginScreen = document.getElementById('login-screen');
 
+                if (profileUnsubscribe) profileUnsubscribe();
+                if (dayUnsubscribe) dayUnsubscribe();
+
                 if (user) {
                     userId = user.uid;
                     document.getElementById('user-info').textContent = user.displayName || user.email;
-                    loginScreen.classList.remove('active');
-                    appContainer.classList.add('active');
-                    
-                    if (profileUnsubscribe) profileUnsubscribe();
                     
                     const profileRef = doc(db, 'users', userId, "essensplan", "profile");
+                    
                     const profileSnap = await getDoc(profileRef);
-
                     if (!profileSnap.exists()) {
                         await setDoc(profileRef, defaultProfile);
                         AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+                    } else {
+                        AppState.profile = { ...defaultProfile, ...profileSnap.data()};
                     }
                     
+                    // Attach listener that ONLY updates profile state
                     profileUnsubscribe = onSnapshot(profileRef, (snapshot) => {
                          if (snapshot.exists()) {
-                            AppState.profile = snapshot.data();
-                            renderEverything();
+                            AppState.profile = { ...defaultProfile, ...snapshot.data()};
+                            renderDatabaseTable();
+                            renderAllCharts();
+                            applyTheme();
                         }
                     });
-                    
+
+                    loginScreen.classList.remove('active');
+                    appContainer.classList.add('active');
+                    // Load today's data and render everything once all initial data is fetched.
                     loadDay(new Date());
                     
                 } else {
-                    if(profileUnsubscribe) profileUnsubscribe();
-                    if(dayUnsubscribe) dayUnsubscribe();
                     userId = null;
                     appContainer.classList.remove('active');
                     loginScreen.classList.add('active');
@@ -545,7 +555,6 @@
                     const dateParts = e.target.dataset.date.split('-');
                     const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
                     loadDay(date);
-                    // Close sidebar on mobile after selection
                     if (window.innerWidth < 1024) {
                         toggleSidebar();
                     }
