@@ -118,7 +118,7 @@
                 <div id="status-indicator" class="sync-indicator absolute top-2 right-2 text-sm text-stone-500 opacity-0"></div>
             </header>
 
-            <main class="w-full px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+            <main class="w-full px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto pb-8">
                 <section id="daily-summary" class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md mb-8">
                     <h2 class="text-2xl font-bold mb-6 text-center text-teal-700 dark:text-teal-400">Tagesübersicht</h2>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
@@ -164,6 +164,15 @@
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div class="p-6 border-b dark:border-gray-700"><h3 class="text-2xl font-bold text-teal-700 dark:text-teal-400">Lebensmittel-Datenbank verwalten</h3></div>
             <div class="p-6 overflow-y-auto">
+                 <div class="bg-stone-100 dark:bg-gray-900/50 p-4 rounded-lg mb-6">
+                    <h4 class="font-semibold text-lg mb-3">Online-Datenbank durchsuchen (Open Food Facts)</h4>
+                    <div class="flex gap-2">
+                        <input type="search" id="food-search-input" placeholder="z.B. Haferflocken" class="flex-grow block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm">
+                        <button id="food-search-button" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Suchen</button>
+                    </div>
+                    <div id="api-search-results" class="mt-4 max-h-48 overflow-y-auto"></div>
+                </div>
+
                  <div class="bg-stone-50 dark:bg-gray-900/50 p-4 rounded-lg mb-6">
                      <h4 class="font-semibold text-lg mb-3">Neues Lebensmittel hinzufügen</h4>
                     <form id="add-food-form" class="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
@@ -174,11 +183,12 @@
                              <div><label for="food-protein" class="block text-sm font-medium">Protein/100</label><input type="number" id="food-protein" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
                             <div><label for="food-carbs" class="block text-sm font-medium">KH/100</label><input type="number" id="food-carbs" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
                             <div><label for="food-fat" class="block text-sm font-medium">Fett/100</label><input type="number" id="food-fat" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
-                            <div class="md:col-span-2"><button type="submit" class="w-full bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 transition">Hinzufügen</button></div>
+                            <div class="md:col-span-2"><button type="submit" class="w-full bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 transition">Zur pers. Datenbank hinzufügen</button></div>
                         </div>
                     </form>
                 </div>
                 <div class="overflow-x-auto">
+                    <h4 class="font-semibold text-lg mb-3">Meine gespeicherten Lebensmittel</h4>
                     <table class="min-w-full divide-y divide-stone-200 dark:divide-gray-700">
                         <thead class="bg-stone-50 dark:bg-gray-700/50"><tr><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Lebensmittel</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Einheit</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Kalorien</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Protein</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">KH</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Fett</th><th class="p-3 text-right text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Aktion</th></tr></thead>
                         <tbody id="food-database-body" class="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700"></tbody>
@@ -215,6 +225,35 @@
         };
         
         let charts = {};
+
+        const centerTextPlugin = {
+            id: 'centerText',
+            afterDraw: (chart) => {
+                const centerTextOptions = chart.config.options.plugins.centerText;
+                if (!centerTextOptions || typeof centerTextOptions.currentValue === 'undefined') return;
+                
+                const { currentValue, goal, unit, isDark } = centerTextOptions;
+                let { ctx, chartArea: { width, height, top } } = chart;
+                ctx.save();
+                
+                const goalText = `von ${goal} ${unit}`;
+
+                // Main number
+                ctx.font = 'bold 1.8rem Inter';
+                ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(currentValue, width / 2, height / 2 + top);
+                
+                // Sub-text
+                ctx.font = '0.8rem Inter';
+                ctx.fillStyle = isDark ? '#9ca3af' : '#6b7280';
+                ctx.fillText(goalText, width / 2, height / 2 + top + 25);
+                
+                ctx.restore();
+            }
+        };
+
 
         function showStatusIndicator(message, isError = false) {
             const indicator = document.getElementById('status-indicator');
@@ -256,8 +295,12 @@
             renderAllCharts();
             
             document.querySelectorAll('#meal-tabs button').forEach(btn => {
-                const isActive = btn.dataset.tab === AppState.profile.activeTab;
-                btn.classList.toggle('tab-active', isActive);
+                btn.classList.remove('tab-active', 'text-stone-500', 'dark:text-stone-400');
+                if (btn.dataset.tab === AppState.profile.activeTab) {
+                    btn.classList.add('tab-active');
+                } else {
+                     btn.classList.add('text-stone-500', 'dark:text-stone-400');
+                }
             });
         }
 
@@ -313,39 +356,50 @@
 
         function createDoughnutChart(canvasId, label, color) {
             const ctx = document.getElementById(canvasId).getContext('2d');
-            charts[canvasId] = new Chart(ctx, { type: 'doughnut', data: { labels: [label, 'Verbleibend'], datasets: [{ data: [0, 100], backgroundColor: [color, '#e5e7eb'], borderColor: ['#ffffff'], borderWidth: 2, circumference: 180, rotation: 270 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '80%', plugins: { legend: { display: false }, tooltip: { enabled: false } }, events: [] } });
+            charts[canvasId] = new Chart(ctx, { 
+                type: 'doughnut', 
+                data: { 
+                    labels: [label, 'Verbleibend'], 
+                    datasets: [{ data: [0, 100], backgroundColor: [color, '#e5e7eb'], borderColor: ['#ffffff'], borderWidth: 2, circumference: 180, rotation: 270 }] 
+                }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    cutout: '80%', 
+                    plugins: { 
+                        legend: { display: false }, 
+                        tooltip: { enabled: false },
+                        centerText: {} 
+                    }, 
+                    events: [] 
+                },
+                plugins: [centerTextPlugin]
+            });
         }
         
-        function updateDoughnutChart(canvasId, value, goal) {
+        function updateDoughnutChart(canvasId, value, goal, unit) {
             const chart = charts[canvasId];
             if (!chart) return;
             const isDark = AppState.profile.theme === 'dark';
             chart.data.datasets[0].backgroundColor[1] = isDark ? '#374151' : '#e5e7eb';
-            const percentage = goal > 0 ? (value / goal) * 100 : 0;
             chart.data.datasets[0].data = [value, Math.max(0, goal - value)];
-            const text1 = `${Math.round(value)} / ${goal}`;
-            const text2 = `${Math.round(percentage)}%`;
-
-            chart.options.plugins.afterDraw = (chartInstance) => {
-                let { ctx, chartArea: { width, height, top } } = chartInstance;
-                ctx.save(); 
-                ctx.font = 'bold 1.2rem Inter'; 
-                ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
-                ctx.textAlign = 'center'; ctx.fillText(text2, width / 2, height / 2 + top + 5);
-                ctx.font = '0.8rem Inter'; 
-                ctx.fillStyle = isDark ? '#9ca3af' : '#6b7280';
-                ctx.fillText(text1, width / 2, height / 2 + top + 25);
-                ctx.restore();
+            
+            chart.config.options.plugins.centerText = {
+                currentValue: Math.round(value),
+                goal: goal,
+                unit: unit,
+                isDark: isDark
             };
+            
             chart.update();
         }
 
         function renderAllCharts() {
             const totals = calculateTotals();
-            updateDoughnutChart('caloriesChart', totals.calories, AppState.profile.goals.calories);
-            updateDoughnutChart('proteinChart', totals.protein, AppState.profile.goals.protein);
-            updateDoughnutChart('carbsChart', totals.carbs, AppState.profile.goals.carbs);
-            updateDoughnutChart('fatChart', totals.fat, AppState.profile.goals.fat);
+            updateDoughnutChart('caloriesChart', totals.calories, AppState.profile.goals.calories, 'kcal');
+            updateDoughnutChart('proteinChart', totals.protein, AppState.profile.goals.protein, 'g');
+            updateDoughnutChart('carbsChart', totals.carbs, AppState.profile.goals.carbs, 'g');
+            updateDoughnutChart('fatChart', totals.fat, AppState.profile.goals.fat, 'g');
         }
 
         function calculateTotals() {
@@ -417,10 +471,7 @@
         function handleTabClick(e) {
             if (!e.target.matches('button[data-tab]')) return;
             AppState.profile.activeTab = e.target.dataset.tab;
-            renderMealPanels();
-             document.querySelectorAll('#meal-tabs button').forEach(btn => {
-                btn.classList.toggle('tab-active', btn.dataset.tab === AppState.profile.activeTab);
-            });
+            renderEverything(); 
             saveProfileState();
         }
         
@@ -454,21 +505,69 @@
 
         const signOutUser = () => { signOut(auth); };
         
-        function loadDay(date) {
+        async function loadDay(date) {
             AppState.selectedDate = date;
-            AppState.calendarDisplayDate = new Date(date.getFullYear(), date.getMonth(), 1);
             const dateString = date.toISOString().split('T')[0];
             if (dayUnsubscribe) dayUnsubscribe();
             
             const docRef = doc(db, 'users', userId, 'essensplan', dateString);
             dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
                 if(snapshot.exists()) {
-                    AppState.meals = snapshot.data().meals || JSON.parse(JSON.stringify(defaultMeals));
+                    AppState.meals = snapshot.data().meals;
                 } else {
                     AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
                 }
                 renderEverything();
             });
+        }
+        
+        async function searchOpenFoodFacts() {
+            const query = document.getElementById('food-search-input').value;
+            if (query.length < 3) return;
+
+            const resultsContainer = document.getElementById('api-search-results');
+            resultsContainer.innerHTML = `<p class="text-stone-500">Suche läuft...</p>`;
+            
+            const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&lc=de`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.products && data.products.length > 0) {
+                    resultsContainer.innerHTML = data.products.map(product => {
+                        const p = product.nutriments;
+                        if (!p || !product.product_name) return '';
+                        return `
+                            <div class="p-2 border-b dark:border-gray-700 flex justify-between items-center gap-2">
+                                <div class="text-sm">
+                                    <p class="font-bold">${product.product_name || 'Unbekannt'}</p>
+                                    <p class="text-xs text-stone-500">${p['energy-kcal_100g'] || 0} kcal, P: ${p.proteins_100g || 0}g, KH: ${p.carbohydrates_100g || 0}g, F: ${p.fat_100g || 0}g</p>
+                                </div>
+                                <button class="add-from-api-btn p-2 rounded-full bg-teal-500 text-white hover:bg-teal-600 text-xs">+</button>
+                            </div>
+                        `;
+                    }).join('');
+
+                    document.querySelectorAll('.add-from-api-btn').forEach((button, index) => {
+                        button.addEventListener('click', () => {
+                            const product = data.products[index];
+                            const form = document.getElementById('add-food-form');
+                            form.querySelector('#food-name').value = product.product_name || '';
+                            form.querySelector('#food-calories').value = product.nutriments['energy-kcal_100g'] || 0;
+                            form.querySelector('#food-protein').value = product.nutriments.proteins_100g || 0;
+                            form.querySelector('#food-carbs').value = product.nutriments.carbohydrates_100g || 0;
+                            form.querySelector('#food-fat').value = product.nutriments.fat_100g || 0;
+                        });
+                    });
+
+                } else {
+                    resultsContainer.innerHTML = `<p class="text-stone-500">Keine Ergebnisse gefunden.</p>`;
+                }
+            } catch (error) {
+                console.error('API Search Error:', error);
+                resultsContainer.innerHTML = `<p class="text-red-500">Fehler bei der Suche.</p>`;
+            }
         }
 
         async function initApp() {
@@ -504,31 +603,34 @@
                     
                     const profileRef = doc(db, 'users', userId, "essensplan", "profile");
                     
-                    const profileSnap = await getDoc(profileRef);
-                    if (!profileSnap.exists()) {
-                        await setDoc(profileRef, defaultProfile);
-                        AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
-                    } else {
-                        AppState.profile = { ...defaultProfile, ...profileSnap.data()};
-                    }
-                    
-                    // Attach listener that ONLY updates profile state
-                    profileUnsubscribe = onSnapshot(profileRef, (snapshot) => {
-                         if (snapshot.exists()) {
-                            AppState.profile = { ...defaultProfile, ...snapshot.data()};
-                            renderDatabaseTable();
-                            renderAllCharts();
-                            applyTheme();
-                        }
-                    });
+                    profileUnsubscribe = onSnapshot(profileRef, async (profileSnap) => {
+                        let isInitialLoad = !AppState._appReady;
 
-                    loginScreen.classList.remove('active');
-                    appContainer.classList.add('active');
-                    // Load today's data and render everything once all initial data is fetched.
-                    loadDay(new Date());
+                        if (!profileSnap.exists()) {
+                            if (isInitialLoad) {
+                                await setDoc(profileRef, defaultProfile);
+                                AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+                            }
+                        } else {
+                            AppState.profile = { ...defaultProfile, ...profileSnap.data() };
+                        }
+
+                        if(isInitialLoad){
+                            await loadDay(new Date());
+                            AppState._appReady = true; 
+                        }
+
+                        applyTheme();
+                        renderDatabaseTable();
+                        renderAllCharts();
+
+                        loginScreen.classList.remove('active');
+                        appContainer.classList.add('active');
+                    });
                     
                 } else {
                     userId = null;
+                    AppState._appReady = false;
                     appContainer.classList.remove('active');
                     loginScreen.classList.add('active');
                 }
@@ -541,6 +643,7 @@
             document.getElementById('daily-summary').addEventListener('input', handleGoalChange);
             document.getElementById('open-db-button').addEventListener('click', openDatabaseModal);
             document.getElementById('close-db-button').addEventListener('click', closeDatabaseModal);
+            document.getElementById('food-search-button').addEventListener('click', searchOpenFoodFacts);
             
             document.getElementById('prev-month-btn').addEventListener('click', () => {
                 AppState.calendarDisplayDate.setMonth(AppState.calendarDisplayDate.getMonth() - 1);
