@@ -2,10 +2,10 @@
 
 Das ist mein interaktiver Essensplan, den ich als Webanwendung entwickelt habe. Er hilft mir dabei, meine tägliche Ernährung zu verfolgen und meine Fitness-Ziele zu analysieren. Die App wird als einzelne HTML-Seite ausgeführt und nutzt Firebase zur Datenspeicherung und Synchronisation in Echtzeit über mehrere Geräte hinweg.
 
-![Vorschau der App](https://placehold.co/800x450/1f2937/a7f3d0?text=EatSmart+App+Vorschau)
 <p align="center"> 
-  <img src="img/EatSmart.jpg" alt="EatSmart" height="282px" width="637">
+  <img src="img/EatSmart.png" alt="EatSmart" height="282px" width="637">
 </p>
+
 ## Features
 
 * **Tages-Dashboard:** Visuelle Übersicht der aktuellen Kalorien- und Makronährstoffaufnahme mit dynamischen Diagrammen.
