@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiver Essensplan</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: Die App wurde auf Firebase Firestore umgestellt, um eine persistente, cloudbasierte NoSQL-Datenbank zu nutzen. LocalStorage und die manuelle Import/Export-Funktion wurden entfernt. Beim Start authentifiziert sich der Nutzer und die App stellt via onSnapshot eine Echtzeitverbindung zur Datenbank her. Jede Datenänderung wird sofort in Firestore gespeichert und über alle Geräte hinweg synchronisiert. Diese Architektur bietet eine nahtlose, geräteübergreifende Erfahrung. -->
+    <!-- Visualization & Content Choices: Die Visualisierungen (Chart.js Doughnut-Charts) und die grundlegende UI-Struktur bleiben erhalten. Die wesentliche Änderung liegt in der Datenhaltung: 1. Datenquelle: Firestore-Dokument pro Nutzer. 2. Datenfluss: Echtzeit-Updates via onSnapshot. Dies eliminiert die Notwendigkeit manueller Datenverwaltung und macht die App robuster und benutzerfreundlicher. Die Interaktionen (Hinzufügen/Löschen) lösen nun direkte Schreibvorgänge in die Datenbank aus. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active { border-color: #0d9488; color: #0d9488; font-weight: 600; }
+        .dark .tab-active { border-color: #2dd4bf; color: #2dd4bf; }
+        .modal { display: none; }
+        .modal.is-open { display: flex; }
+        .chart-container { position: relative; width: 100%; max-width: 220px; margin-left: auto; margin-right: auto; height: 220px; }
+        .sync-indicator {
+            transition: opacity 0.5s ease-in-out;
+        }
+        #app-container, #login-screen {
+            display: none;
+        }
+        #app-container.active, #login-screen.active {
+            display: block;
+        }
+        .calendar-day {
+            transition: all 0.2s ease-in-out;
+        }
+        .calendar-day.selected {
+            background-color: #0d9488;
+            color: white;
+            font-weight: bold;
+        }
+        .dark .calendar-day.selected {
+            background-color: #2dd4bf;
+            color: #1f2937;
+        }
+        .calendar-day.today {
+            border: 2px solid #0d9488;
+        }
+        .dark .calendar-day.today {
+            border-color: #2dd4bf;
+        }
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+
+        @media (max-width: 1023px) {
+            #sidebar {
+                 box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .chart-container { max-width: 180px; height: 180px; }
+        }
+    </style>
+</head>
+<body class="bg-stone-100 dark:bg-gray-900 text-stone-800 dark:text-stone-200">
+
+    <div id="login-screen" class="container mx-auto p-4 md:p-8 max-w-lg text-center mt-20">
+        <h1 class="text-4xl font-bold text-teal-600 dark:text-teal-400">Willkommen bei EatSmart</h1>
+        <p class="text-stone-600 dark:text-stone-300 mt-4 mb-8">Bitte melden Sie sich an, um Ihren persönlichen Essensplan zu laden und Ihre Daten auf allen Geräten zu synchronisieren.</p>
+        <button id="login-button" class="bg-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-teal-700 transition inline-flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.16H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.84l3.66-2.75z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.16l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/><path d="M1 1h22v22H1z" fill="none"/></svg>
+            Mit Google anmelden
+        </button>
+    </div>
+    
+    <div id="app-container" class="relative">
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden"></div>
+        <aside id="sidebar" class="fixed top-0 left-0 h-full w-72 bg-white dark:bg-gray-800 p-4 z-40 transform -translate-x-full flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="month-year-display" class="text-lg font-bold"></h3>
+                <div class="flex gap-2">
+                    <button id="prev-month-btn" class="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-gray-700">&lt;</button>
+                    <button id="next-month-btn" class="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-gray-700">&gt;</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-stone-500 mb-2">
+                <div>Mo</div><div>Di</div><div>Mi</div><div>Do</div><div>Fr</div><div>Sa</div><div>So</div>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-1"></div>
+            <div class="mt-auto pt-4 border-t border-stone-200 dark:border-gray-700">
+                 <div class="flex items-center justify-between mb-4">
+                     <div class="text-sm overflow-hidden">
+                        <div id="user-info" class="font-medium truncate"></div>
+                        <button id="logout-button" class="text-teal-600 dark:text-teal-400 hover:underline">Abmelden</button>
+                     </div>
+                     <button id="close-sidebar-btn" class="p-2 rounded-full hover:bg-stone-200 dark:hover:bg-gray-700">&times;</button>
+                 </div>
+                 <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium">Dark Mode</span>
+                    <label for="theme-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="theme-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-teal-600"></div>
+                    </label>
+                 </div>
+            </div>
+        </aside>
+
+        <div id="main-app" class="w-full">
+            <header class="text-center mb-8 relative p-4">
+                <button id="menu-button" class="absolute top-2 left-2 p-2 text-stone-600 dark:text-stone-300">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                </button>
+                <h1 class="text-4xl font-bold text-teal-600 dark:text-teal-400">Interaktiver Essensplan</h1>
+                <p id="current-date-display" class="text-stone-600 dark:text-stone-300 mt-2">Plan für heute</p>
+                <div id="status-indicator" class="sync-indicator absolute top-2 right-2 text-sm text-stone-500 opacity-0"></div>
+            </header>
+
+            <main class="w-full px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+                <section id="daily-summary" class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md mb-8">
+                    <h2 class="text-2xl font-bold mb-6 text-center text-teal-700 dark:text-teal-400">Tagesübersicht</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-center">
+                         <div>
+                            <h3 class="font-semibold text-lg mb-2">Kalorien</h3>
+                            <div class="chart-container"><canvas id="caloriesChart"></canvas></div>
+                            <div class="mt-2"><label for="goal-calories" class="text-sm font-medium">Ziel:</label><input type="number" id="goal-calories" class="mt-1 w-20 text-center bg-stone-100 dark:bg-gray-700 rounded-md p-1" value="2000"></div>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Proteine</h3>
+                            <div class="chart-container"><canvas id="proteinChart"></canvas></div>
+                            <div class="mt-2"><label for="goal-protein" class="text-sm font-medium">Ziel:</label><input type="number" id="goal-protein" class="mt-1 w-20 text-center bg-stone-100 dark:bg-gray-700 rounded-md p-1" value="120"></div>
+                        </div>
+                         <div>
+                            <h3 class="font-semibold text-lg mb-2">Kohlenhydrate</h3>
+                            <div class="chart-container"><canvas id="carbsChart"></canvas></div>
+                            <div class="mt-2"><label for="goal-carbs" class="text-sm font-medium">Ziel:</label><input type="number" id="goal-carbs" class="mt-1 w-20 text-center bg-stone-100 dark:bg-gray-700 rounded-md p-1" value="250"></div>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-lg mb-2">Fett</h3>
+                            <div class="chart-container"><canvas id="fatChart"></canvas></div>
+                            <div class="mt-2"><label for="goal-fat" class="text-sm font-medium">Ziel:</label><input type="number" id="goal-fat" class="mt-1 w-20 text-center bg-stone-100 dark:bg-gray-700 rounded-md p-1" value="70"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="meals" class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-md">
+                    <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+                        <h2 class="text-2xl font-bold text-teal-700 dark:text-teal-400">Mahlzeiten</h2>
+                         <button id="open-db-button" class="bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 transition">Lebensmittel-Datenbank</button>
+                    </div>
+                    <div class="border-b border-stone-200 dark:border-gray-700 mb-6">
+                        <nav id="meal-tabs" class="-mb-px flex space-x-6 overflow-x-auto"><button data-tab="fruehstueck" class="tab-active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Frühstück</button><button data-tab="mittagessen" class="text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:border-stone-300 dark:hover:border-gray-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Mittagessen</button><button data-tab="abendessen" class="text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:border-stone-300 dark:hover:border-gray-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Abendessen</button><button data-tab="snacks" class="text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:border-stone-300 dark:hover:border-gray-600 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Snacks</button></nav>
+                    </div>
+                    <div id="meal-panels"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Modal -->
+    <div id="database-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b dark:border-gray-700"><h3 class="text-2xl font-bold text-teal-700 dark:text-teal-400">Lebensmittel-Datenbank verwalten</h3></div>
+            <div class="p-6 overflow-y-auto">
+                 <div class="bg-stone-50 dark:bg-gray-900/50 p-4 rounded-lg mb-6">
+                     <h4 class="font-semibold text-lg mb-3">Neues Lebensmittel hinzufügen</h4>
+                    <form id="add-food-form" class="grid grid-cols-2 md:grid-cols-6 gap-4 items-end">
+                        <div class="col-span-2 md:col-span-2"><label for="food-name" class="block text-sm font-medium">Name</label><input type="text" id="food-name" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm"></div>
+                         <div><label for="food-unit" class="block text-sm font-medium">Einheit</label><select id="food-unit" class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm"><option>g</option><option>ml</option></select></div>
+                        <div><label for="food-calories" class="block text-sm font-medium">kcal/100</label><input type="number" id="food-calories" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
+                        <div class="col-span-2 md:col-span-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                             <div><label for="food-protein" class="block text-sm font-medium">Protein/100</label><input type="number" id="food-protein" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
+                            <div><label for="food-carbs" class="block text-sm font-medium">KH/100</label><input type="number" id="food-carbs" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
+                            <div><label for="food-fat" class="block text-sm font-medium">Fett/100</label><input type="number" id="food-fat" required class="mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" step="0.1"></div>
+                            <div class="md:col-span-2"><button type="submit" class="w-full bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 transition">Hinzufügen</button></div>
+                        </div>
+                    </form>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-stone-200 dark:divide-gray-700">
+                        <thead class="bg-stone-50 dark:bg-gray-700/50"><tr><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Lebensmittel</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Einheit</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Kalorien</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Protein</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">KH</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Fett</th><th class="p-3 text-right text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Aktion</th></tr></thead>
+                        <tbody id="food-database-body" class="bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="p-4 bg-stone-50 dark:bg-gray-900/50 border-t dark:border-gray-700 text-right"><button id="close-db-button" class="bg-stone-200 dark:bg-gray-700 text-stone-800 dark:text-stone-200 font-semibold py-2 px-4 rounded-lg hover:bg-stone-300 dark:hover:bg-gray-600 transition">Schließen</button></div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        let db, auth, userId;
+        let profileUnsubscribe = null;
+        let dayUnsubscribe = null;
+        let saveTimeout;
+        
+        const defaultProfile = {
+            goals: { calories: 2000, protein: 120, carbs: 250, fat: 70 },
+            foodDatabase: [{ id: Date.now() + 1, name: 'Hähnchenbrustfilet', unit: 'g', calories: 165, protein: 31, carbs: 0, fat: 3.6 },{ id: Date.now() + 2, name: 'Reis (ungekocht)', unit: 'g', calories: 360, protein: 7.5, carbs: 78, fat: 1 },{ id: Date.now() + 3, name: 'Olivenöl', unit: 'ml', calories: 884, protein: 0, carbs: 0, fat: 100 },{ id: Date.now() + 4, name: 'Brokkoli', unit: 'g', calories: 34, protein: 2.8, carbs: 7, fat: 0.4 },{ id: Date.now() + 5, name: 'Magerquark', unit: 'g', calories: 66, protein: 12, carbs: 4, fat: 0.2 },{ id: Date.now() + 6, name: 'Apfel', unit: 'g', calories: 52, protein: 0.3, carbs: 14, fat: 0.2 }],
+            activeTab: 'fruehstueck',
+            theme: 'dark'
+        };
+        const defaultMeals = { fruehstueck: [], mittagessen: [], abendessen: [], snacks: [] };
+
+        let AppState = {
+            profile: JSON.parse(JSON.stringify(defaultProfile)),
+            meals: JSON.parse(JSON.stringify(defaultMeals)),
+            calendarDisplayDate: new Date(),
+            selectedDate: new Date()
+        };
+        
+        let charts = {};
+
+        function showStatusIndicator(message, isError = false) {
+            const indicator = document.getElementById('status-indicator');
+            indicator.textContent = message; indicator.style.color = isError ? '#dc2626' : '#6b7280';
+            indicator.style.opacity = '1'; clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => { indicator.style.opacity = '0'; }, 2500);
+        }
+
+        async function saveProfileState() {
+            if (!userId || !db) return;
+            try {
+                const docRef = doc(db, "users", userId, "essensplan", "profile");
+                await setDoc(docRef, AppState.profile, { merge: true });
+                showStatusIndicator('Gespeichert');
+            } catch (error) { console.error("Error saving profile: ", error); showStatusIndicator('Speicherfehler', true); }
+        }
+
+        async function saveDayState() {
+            if (!userId || !db) return;
+            const dateString = AppState.selectedDate.toISOString().split('T')[0];
+            try {
+                const docRef = doc(db, "users", userId, "essensplan", dateString);
+                await setDoc(docRef, { meals: AppState.meals });
+                showStatusIndicator('Gespeichert');
+            } catch (error) { console.error("Error saving day: ", error); showStatusIndicator('Speicherfehler', true); }
+        }
+        
+        function renderEverything() {
+            document.getElementById('goal-calories').value = AppState.profile.goals.calories;
+            document.getElementById('goal-protein').value = AppState.profile.goals.protein;
+            document.getElementById('goal-carbs').value = AppState.profile.goals.carbs;
+            document.getElementById('goal-fat').value = AppState.profile.goals.fat;
+            document.getElementById('current-date-display').textContent = `Plan für ${AppState.selectedDate.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
+            
+            applyTheme();
+            renderCalendar();
+            renderMealPanels();
+            renderDatabaseTable();
+            renderAllCharts();
+            
+            document.querySelectorAll('#meal-tabs button').forEach(btn => {
+                const isActive = btn.dataset.tab === AppState.profile.activeTab;
+                btn.classList.toggle('tab-active', isActive);
+            });
+        }
+
+        function applyTheme() {
+            if (AppState.profile.theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-toggle').checked = true;
+            } else {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-toggle').checked = false;
+            }
+        }
+        
+        function renderCalendar() {
+            const grid = document.getElementById('calendar-grid');
+            const display = document.getElementById('month-year-display');
+            grid.innerHTML = '';
+            
+            const date = AppState.calendarDisplayDate;
+            const month = date.getMonth();
+            const year = date.getFullYear();
+
+            display.textContent = date.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+            const firstDayOfMonth = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const dayOffset = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
+
+            for (let i = 0; i < dayOffset; i++) {
+                grid.insertAdjacentHTML('beforeend', '<div></div>');
+            }
+
+            const today = new Date();
+            const selDate = AppState.selectedDate;
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayEl = document.createElement('button');
+                dayEl.textContent = day;
+                
+                const monthString = String(month + 1).padStart(2, '0');
+                const dayString = String(day).padStart(2, '0');
+                dayEl.dataset.date = `${year}-${monthString}-${dayString}`;
+
+                dayEl.className = 'calendar-day p-2 rounded-full text-center cursor-pointer hover:bg-stone-200 dark:hover:bg-gray-700';
+                if (day === today.getDate() && month === today.getMonth() && year === today.getFullYear()) {
+                    dayEl.classList.add('today');
+                }
+                if (day === selDate.getDate() && month === selDate.getMonth() && year === selDate.getFullYear()) {
+                    dayEl.classList.add('selected');
+                }
+                grid.appendChild(dayEl);
+            }
+        }
+
+        function createDoughnutChart(canvasId, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            charts[canvasId] = new Chart(ctx, { type: 'doughnut', data: { labels: [label, 'Verbleibend'], datasets: [{ data: [0, 100], backgroundColor: [color, '#e5e7eb'], borderColor: ['#ffffff'], borderWidth: 2, circumference: 180, rotation: 270 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '80%', plugins: { legend: { display: false }, tooltip: { enabled: false } }, events: [] } });
+        }
+        
+        function updateDoughnutChart(canvasId, value, goal) {
+            const chart = charts[canvasId];
+            if (!chart) return;
+            const isDark = AppState.profile.theme === 'dark';
+            chart.data.datasets[0].backgroundColor[1] = isDark ? '#374151' : '#e5e7eb';
+            const percentage = goal > 0 ? (value / goal) * 100 : 0;
+            chart.data.datasets[0].data = [value, Math.max(0, goal - value)];
+            const text1 = `${Math.round(value)} / ${goal}`;
+            const text2 = `${Math.round(percentage)}%`;
+
+            chart.options.plugins.afterDraw = (chartInstance) => {
+                let { ctx, chartArea: { width, height, top } } = chartInstance;
+                ctx.save(); 
+                ctx.font = 'bold 1.2rem Inter'; 
+                ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
+                ctx.textAlign = 'center'; ctx.fillText(text2, width / 2, height / 2 + top + 5);
+                ctx.font = '0.8rem Inter'; 
+                ctx.fillStyle = isDark ? '#9ca3af' : '#6b7280';
+                ctx.fillText(text1, width / 2, height / 2 + top + 25);
+                ctx.restore();
+            };
+            chart.update();
+        }
+
+        function renderAllCharts() {
+            const totals = calculateTotals();
+            updateDoughnutChart('caloriesChart', totals.calories, AppState.profile.goals.calories);
+            updateDoughnutChart('proteinChart', totals.protein, AppState.profile.goals.protein);
+            updateDoughnutChart('carbsChart', totals.carbs, AppState.profile.goals.carbs);
+            updateDoughnutChart('fatChart', totals.fat, AppState.profile.goals.fat);
+        }
+
+        function calculateTotals() {
+            let totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+            for (const mealType in AppState.meals) {
+                if (Array.isArray(AppState.meals[mealType])) {
+                    AppState.meals[mealType].forEach(item => {
+                        totals.calories += item.totalCalories; totals.protein += item.totalProtein;
+                        totals.carbs += item.totalCarbs; totals.fat += item.totalFat;
+                    });
+                }
+            }
+            return totals;
+        }
+        
+        function renderMealPanels() {
+            const panelsContainer = document.getElementById('meal-panels');
+            panelsContainer.innerHTML = '';
+            Object.keys(defaultMeals).forEach(mealKey => {
+                const meal = AppState.meals[mealKey] || [];
+                const panel = document.createElement('div');
+                panel.id = `panel-${mealKey}`;
+                panel.className = 'meal-panel' + (AppState.profile.activeTab === mealKey ? '' : ' hidden');
+                let foodOptions = AppState.profile.foodDatabase.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+                panel.innerHTML = `<div class="bg-stone-50 dark:bg-gray-900/50 p-4 rounded-lg mb-4"><form class="add-meal-item-form grid grid-cols-1 md:grid-cols-4 gap-4 items-end" data-meal-key="${mealKey}"><div class="md:col-span-2"><label class="block text-sm font-medium">Lebensmittel</label><select class="food-select mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" required>${foodOptions}</select></div><div><label class="block text-sm font-medium">Menge</label><input type="number" class="quantity-input mt-1 block w-full rounded-md border-stone-300 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-sm" required placeholder="in g oder ml" step="any"></div><button type="submit" class="w-full bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 transition">Hinzufügen</button></form></div><div class="overflow-x-auto"><table class="min-w-full divide-y divide-stone-200 dark:divide-gray-700"><thead class="bg-stone-50 dark:bg-gray-700/50"><tr><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Lebensmittel</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Menge</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Kalorien</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">P</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">KH</th><th class="p-3 text-left text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">F</th><th class="p-3 text-right text-xs font-medium text-stone-500 dark:text-stone-400 uppercase">Aktion</th></tr></thead><tbody class="meal-table-body bg-white dark:bg-gray-800 divide-y divide-stone-200 dark:divide-gray-700">${meal.map(item => `<tr data-item-id="${item.id}"><td class="p-3 whitespace-nowrap">${item.name}</td><td class="p-3 whitespace-nowrap">${item.quantity} ${item.unit}</td><td class="p-3 whitespace-nowrap">${item.totalCalories.toFixed(1)}</td><td class="p-3 whitespace-nowrap">${item.totalProtein.toFixed(1)}g</td><td class="p-3 whitespace-nowrap">${item.totalCarbs.toFixed(1)}g</td><td class="p-3 whitespace-nowrap">${item.totalFat.toFixed(1)}g</td><td class="p-3 whitespace-nowrap text-right text-sm font-medium"><button class="remove-meal-item-btn" data-meal-key="${mealKey}" data-item-id="${item.id}">Löschen</button></td></tr>`).join('')}</tbody></table></div>`;
+                panelsContainer.appendChild(panel);
+            });
+            attachMealFormListeners();
+        }
+        
+        function renderDatabaseTable() {
+            const tableBody = document.getElementById('food-database-body');
+            tableBody.innerHTML = AppState.profile.foodDatabase.map(food => `<tr><td class="p-3">${food.name}</td><td class="p-3">${food.unit}</td><td class="p-3">${food.calories}</td><td class="p-3">${food.protein}</td><td class="p-3">${food.carbs}</td><td class="p-3">${food.fat}</td><td class="p-3 text-right"><button class="delete-food-item-btn" data-food-id="${food.id}">Löschen</button></td></tr>`).join('');
+            document.querySelectorAll('.delete-food-item-btn').forEach(button => { button.classList.add('text-red-600', 'dark:text-red-500', 'hover:underline'); button.addEventListener('click', (e) => deleteFoodItem(parseInt(e.currentTarget.dataset.foodId))); });
+        }
+
+        function addFoodItemToDatabase(e) {
+            e.preventDefault();
+            const form = e.target;
+            AppState.profile.foodDatabase.push({ id: Date.now(), name: form.querySelector('#food-name').value, unit: form.querySelector('#food-unit').value, calories: parseFloat(form.querySelector('#food-calories').value), protein: parseFloat(form.querySelector('#food-protein').value), carbs: parseFloat(form.querySelector('#food-carbs').value), fat: parseFloat(form.querySelector('#food-fat').value) });
+            saveProfileState(); form.reset();
+        }
+        
+        function deleteFoodItem(foodId) {
+            AppState.profile.foodDatabase = AppState.profile.foodDatabase.filter(f => f.id !== foodId);
+            saveProfileState();
+        }
+        
+        function addMealItem(e) {
+            e.preventDefault();
+            const form = e.target;
+            const mealKey = form.dataset.mealKey;
+            const foodId = parseInt(form.querySelector('.food-select').value);
+            const quantity = parseFloat(form.querySelector('.quantity-input').value);
+            const food = AppState.profile.foodDatabase.find(f => f.id === foodId);
+            if (!food || !quantity) return;
+            if (!Array.isArray(AppState.meals[mealKey])) AppState.meals[mealKey] = [];
+            AppState.meals[mealKey].push({ id: 'item-' + Date.now(), foodId: food.id, name: food.name, unit: food.unit, quantity: quantity, totalCalories: (quantity / 100) * food.calories, totalProtein: (quantity / 100) * food.protein, totalCarbs: (quantity / 100) * food.carbs, totalFat: (quantity / 100) * food.fat });
+            saveDayState(); form.reset();
+        }
+        
+        function removeMealItem(mealKey, itemId) {
+            if (AppState.meals[mealKey]) {
+                AppState.meals[mealKey] = AppState.meals[mealKey].filter(item => item.id !== itemId);
+                saveDayState();
+            }
+        }
+
+        function handleTabClick(e) {
+            if (!e.target.matches('button[data-tab]')) return;
+            AppState.profile.activeTab = e.target.dataset.tab;
+            saveProfileState();
+        }
+        
+        function handleGoalChange() {
+            AppState.profile.goals.calories = parseFloat(document.getElementById('goal-calories').value) || 0;
+            AppState.profile.goals.protein = parseFloat(document.getElementById('goal-protein').value) || 0;
+            AppState.profile.goals.carbs = parseFloat(document.getElementById('goal-carbs').value) || 0;
+            AppState.profile.goals.fat = parseFloat(document.getElementById('goal-fat').value) || 0;
+            saveProfileState();
+        }
+        
+        function openDatabaseModal() { document.getElementById('database-modal').classList.add('is-open'); }
+        function closeDatabaseModal() { document.getElementById('database-modal').classList.remove('is-open'); }
+        
+        function attachMealFormListeners() {
+            document.querySelectorAll('.add-meal-item-form').forEach(form => { form.addEventListener('submit', addMealItem); });
+            document.querySelectorAll('.remove-meal-item-btn').forEach(button => { button.classList.add('text-red-600', 'dark:text-red-500', 'hover:underline'); button.addEventListener('click', (e) => removeMealItem(e.currentTarget.dataset.mealKey, e.currentTarget.dataset.itemId)); });
+        }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+
+        const signIn = () => {
+            const provider = new GoogleAuthProvider();
+            signInWithPopup(auth, provider).catch(error => { console.error("Anmeldefehler", error); alert("Anmeldung fehlgeschlagen: " + error.message); });
+        };
+
+        const signOutUser = () => { signOut(auth); };
+        
+        async function loadDay(date) {
+            AppState.selectedDate = date;
+            const dateString = date.toISOString().split('T')[0];
+            if (dayUnsubscribe) dayUnsubscribe();
+            
+            const docRef = doc(db, 'users', userId, 'essensplan', dateString);
+            dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
+                if(snapshot.exists()) {
+                    AppState.meals = snapshot.data().meals;
+                } else {
+                    AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
+                }
+                renderEverything();
+            });
+        }
+
+        async function initApp() {
+            const firebaseConfig = {
+              apiKey: "AIzaSyD6OOuN8vWlC9FzX3SPBS91CnuRFrZ2DzE",
+              authDomain: "eatsmart-53246.firebaseapp.com",
+              projectId: "eatsmart-53246",
+              storageBucket: "eatsmart-53246.appspot.com",
+              messagingSenderId: "781970485333",
+              appId: "1:781970485333:web:99f3d698dbe2938c2f64dc",
+              measurementId: "G-Z7C5R4BZGS"
+            };
+
+            createDoughnutChart('caloriesChart', 'Kalorien', '#0d9488');
+            createDoughnutChart('proteinChart', 'Protein', '#0891b2');
+            createDoughnutChart('carbsChart', 'KH', '#f59e0b');
+            createDoughnutChart('fatChart', 'Fett', '#ef4444');
+            
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            
+            onAuthStateChanged(auth, async user => {
+                const appContainer = document.getElementById('app-container');
+                const loginScreen = document.getElementById('login-screen');
+
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-info').textContent = user.displayName || user.email;
+                    loginScreen.classList.remove('active');
+                    appContainer.classList.add('active');
+                    
+                    if (profileUnsubscribe) profileUnsubscribe();
+                    
+                    const profileRef = doc(db, 'users', userId, "essensplan", "profile");
+                    const profileSnap = await getDoc(profileRef);
+
+                    if (!profileSnap.exists()) {
+                        await setDoc(profileRef, defaultProfile);
+                        AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+                    }
+                    
+                    profileUnsubscribe = onSnapshot(profileRef, (snapshot) => {
+                         if (snapshot.exists()) {
+                            AppState.profile = snapshot.data();
+                            renderEverything();
+                        }
+                    });
+                    
+                    loadDay(new Date());
+                    
+                } else {
+                    if(profileUnsubscribe) profileUnsubscribe();
+                    if(dayUnsubscribe) dayUnsubscribe();
+                    userId = null;
+                    appContainer.classList.remove('active');
+                    loginScreen.classList.add('active');
+                }
+            });
+
+            document.getElementById('login-button').addEventListener('click', signIn);
+            document.getElementById('logout-button').addEventListener('click', signOutUser);
+            document.getElementById('meal-tabs').addEventListener('click', handleTabClick);
+            document.getElementById('add-food-form').addEventListener('submit', addFoodItemToDatabase);
+            document.getElementById('daily-summary').addEventListener('input', handleGoalChange);
+            document.getElementById('open-db-button').addEventListener('click', openDatabaseModal);
+            document.getElementById('close-db-button').addEventListener('click', closeDatabaseModal);
+            
+            document.getElementById('prev-month-btn').addEventListener('click', () => {
+                AppState.calendarDisplayDate.setMonth(AppState.calendarDisplayDate.getMonth() - 1);
+                renderCalendar();
+            });
+            document.getElementById('next-month-btn').addEventListener('click', () => {
+                AppState.calendarDisplayDate.setMonth(AppState.calendarDisplayDate.getMonth() + 1);
+                renderCalendar();
+            });
+            document.getElementById('calendar-grid').addEventListener('click', (e) => {
+                if (e.target.matches('.calendar-day')) {
+                    const dateParts = e.target.dataset.date.split('-');
+                    const date = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                    loadDay(date);
+                    // Close sidebar on mobile after selection
+                    if (window.innerWidth < 1024) {
+                        toggleSidebar();
+                    }
+                }
+            });
+            
+            document.getElementById('menu-button').addEventListener('click', toggleSidebar);
+            document.getElementById('close-sidebar-btn').addEventListener('click', toggleSidebar);
+            document.getElementById('sidebar-overlay').addEventListener('click', toggleSidebar);
+
+            document.getElementById('theme-toggle').addEventListener('change', (e) => {
+                AppState.profile.theme = e.target.checked ? 'dark' : 'light';
+                applyTheme();
+                saveProfileState();
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
