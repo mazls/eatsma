@@ -273,7 +273,7 @@
 
         async function saveDayState() {
             if (!userId || !db) return;
-            const dateString = AppState.selectedDate.toISOString().split('T')[0];
+            const dateString = getLocalDateString(AppState.selectedDate);
             try {
                 const docRef = doc(db, "users", userId, "essensplan", dateString);
                 await setDoc(docRef, { meals: AppState.meals });
@@ -471,7 +471,15 @@
         function handleTabClick(e) {
             if (!e.target.matches('button[data-tab]')) return;
             AppState.profile.activeTab = e.target.dataset.tab;
-            renderEverything(); 
+            renderMealPanels(); 
+            document.querySelectorAll('#meal-tabs button').forEach(btn => {
+                btn.classList.remove('tab-active', 'text-stone-500', 'dark:text-stone-400');
+                if (btn.dataset.tab === AppState.profile.activeTab) {
+                    btn.classList.add('tab-active');
+                } else {
+                     btn.classList.add('text-stone-500', 'dark:text-stone-400');
+                }
+            });
             saveProfileState();
         }
         
@@ -504,20 +512,30 @@
         };
 
         const signOutUser = () => { signOut(auth); };
+
+        function getLocalDateString(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
         
-        async function loadDay(date) {
-            AppState.selectedDate = date;
-            const dateString = date.toISOString().split('T')[0];
-            if (dayUnsubscribe) dayUnsubscribe();
-            
-            const docRef = doc(db, 'users', userId, 'essensplan', dateString);
-            dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
-                if(snapshot.exists()) {
-                    AppState.meals = snapshot.data().meals;
-                } else {
-                    AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
-                }
-                renderEverything();
+        function loadDay(date) {
+            return new Promise((resolve, reject) => {
+                AppState.selectedDate = date;
+                const dateString = getLocalDateString(date);
+                if (dayUnsubscribe) dayUnsubscribe();
+                
+                const docRef = doc(db, 'users', userId, 'essensplan', dateString);
+                dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
+                    if(snapshot.exists()) {
+                        AppState.meals = snapshot.data().meals || JSON.parse(JSON.stringify(defaultMeals));
+                    } else {
+                        AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
+                    }
+                    renderEverything();
+                    resolve();
+                }, reject);
             });
         }
         
@@ -603,34 +621,30 @@
                     
                     const profileRef = doc(db, 'users', userId, "essensplan", "profile");
                     
-                    profileUnsubscribe = onSnapshot(profileRef, async (profileSnap) => {
-                        let isInitialLoad = !AppState._appReady;
+                    const profileSnap = await getDoc(profileRef);
+                    if (!profileSnap.exists()) {
+                        await setDoc(profileRef, defaultProfile);
+                        AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+                    } else {
+                         AppState.profile = { ...defaultProfile, ...profileSnap.data() };
+                    }
 
-                        if (!profileSnap.exists()) {
-                            if (isInitialLoad) {
-                                await setDoc(profileRef, defaultProfile);
-                                AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
-                            }
-                        } else {
-                            AppState.profile = { ...defaultProfile, ...profileSnap.data() };
+                    profileUnsubscribe = onSnapshot(profileRef, (snapshot) => {
+                         if (snapshot.exists()) {
+                            AppState.profile = { ...defaultProfile, ...snapshot.data()};
+                            applyTheme();
+                            renderDatabaseTable();
+                            renderAllCharts();
                         }
-
-                        if(isInitialLoad){
-                            await loadDay(new Date());
-                            AppState._appReady = true; 
-                        }
-
-                        applyTheme();
-                        renderDatabaseTable();
-                        renderAllCharts();
-
-                        loginScreen.classList.remove('active');
-                        appContainer.classList.add('active');
                     });
+                    
+                    await loadDay(new Date());
+
+                    loginScreen.classList.remove('active');
+                    appContainer.classList.add('active');
                     
                 } else {
                     userId = null;
-                    AppState._appReady = false;
                     appContainer.classList.remove('active');
                     loginScreen.classList.add('active');
                 }
@@ -663,6 +677,11 @@
                     }
                 }
             });
+            
+            // This button was removed from HTML, its listener must be removed as well.
+            // document.getElementById('reload-day-button').addEventListener('click', () => {
+            //     if(userId) loadDay(AppState.selectedDate);
+            // });
             
             document.getElementById('menu-button').addEventListener('click', toggleSidebar);
             document.getElementById('close-sidebar-btn').addEventListener('click', toggleSidebar);
