@@ -1,5 +1,7 @@
 # EatSmart: Interaktiver Essensplan
 
+[Web-App](https://mazls.github.io/eatsma/)
+
 Das ist mein interaktiver Essensplan, den ich als Webanwendung entwickelt habe. Er hilft mir dabei, meine tägliche Ernährung zu verfolgen und meine Fitness-Ziele zu analysieren. Die App wird als einzelne HTML-Seite ausgeführt und nutzt Firebase zur Datenspeicherung und Synchronisation in Echtzeit über mehrere Geräte hinweg.
 
 <p align="center"> 
