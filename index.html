@@ -12,8 +12,7 @@
         }
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Laden der ausgelagerten DGE-Daten -->
-    <script src="dge-data.js" defer></script>
+    
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tab-active { border-color: #0d9488; color: #0d9488; font-weight: 600; }
@@ -71,6 +70,9 @@
         <button id="login-button" class="bg-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-teal-700 transition inline-flex items-center gap-3">
             <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 0 24 24" width="24px" fill="#FFFFFF"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.16H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.84l3.66-2.75z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.16l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/><path d="M1 1h22v22H1z" fill="none"/></svg>
             Mit Google anmelden
+        </button>
+        <button id="demo-button" class="mt-4 text-sm text-stone-600 dark:text-stone-400 hover:underline">
+            App ohne Anmeldung testen (Daten werden nur lokal gespeichert)
         </button>
     </div>
     
@@ -165,7 +167,6 @@
         </div>
     </div>
     
-    <!-- Modals -->
     <div id="database-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-50">
         <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div class="p-6 border-b dark:border-gray-700"><h3 class="text-2xl font-bold text-teal-700 dark:text-teal-400">Lebensmittel-Datenbank verwalten</h3></div>
@@ -235,7 +236,6 @@
                      <div class="mt-4">
                         <h5 class="text-sm font-medium mb-2">Nährstoffe anzeigen:</h5>
                         <div id="dge-nutrient-filters" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-sm">
-                            <!-- Nutrient checkboxes will be generated here -->
                         </div>
                     </div>
                 </div>
@@ -311,11 +311,10 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        // DGE-Daten werden aus der separaten Datei geladen
-        // import { dgeData, defaultNutrients } from './dge-data.js';
+        import { getFirestore, doc, onSnapshot, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { dgeData, defaultNutrients } from './dge-data.js';
 
-        let db, auth, userId;
+        let db, auth, userId, isDemoMode = false;
         let profileUnsubscribe = null;
         let dayUnsubscribe = null;
         let saveTimeout;
@@ -351,14 +350,12 @@
                 
                 const goalText = `von ${goal} ${unit}`;
 
-                // Main number
                 ctx.font = 'bold 1.8rem Inter';
                 ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(currentValue, width / 2, height / 2 + top);
                 
-                // Sub-text
                 ctx.font = '0.8rem Inter';
                 ctx.fillStyle = isDark ? '#9ca3af' : '#6b7280';
                 ctx.fillText(goalText, width / 2, height / 2 + top + 25);
@@ -376,15 +373,22 @@
         }
 
         async function saveProfileState() {
-            if (!userId || !db) return;
-            try {
-                const docRef = doc(db, "users", userId, "essensplan", "profile");
-                await setDoc(docRef, AppState.profile, { merge: true });
-                showStatusIndicator('Gespeichert');
-            } catch (error) { console.error("Error saving profile: ", error); showStatusIndicator('Speicherfehler', true); }
+             if (isDemoMode) {
+                saveStateToLocalStorage();
+            } else if (userId && db) {
+                try {
+                    const docRef = doc(db, "users", userId, "essensplan", "profile");
+                    await setDoc(docRef, AppState.profile, { merge: true });
+                    showStatusIndicator('Gespeichert');
+                } catch (error) { console.error("Error saving profile: ", error); showStatusIndicator('Speicherfehler', true); }
+            }
         }
 
         async function saveDayState() {
+            if (isDemoMode) {
+                saveStateToLocalStorage();
+                return;
+            }
             if (!userId || !db) return;
             const dateString = getLocalDateString(AppState.selectedDate);
             try {
@@ -394,11 +398,38 @@
             } catch (error) { console.error("Error saving day: ", error); showStatusIndicator('Speicherfehler', true); }
         }
         
+        function saveStateToLocalStorage() {
+            const state = {
+                profile: AppState.profile,
+                days: JSON.parse(localStorage.getItem('demoDays') || '{}')
+            };
+            const dateString = getLocalDateString(AppState.selectedDate);
+            state.days[dateString] = AppState.meals;
+            localStorage.setItem('demoProfile', JSON.stringify(state.profile));
+            localStorage.setItem('demoDays', JSON.stringify(state.days));
+            showStatusIndicator('Lokal gespeichert');
+        }
+
+        function loadStateFromLocalStorage(date) {
+            AppState.selectedDate = date;
+            const profile = localStorage.getItem('demoProfile');
+            if (profile) {
+                AppState.profile = { ...defaultProfile, ...JSON.parse(profile) };
+            } else {
+                AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+            }
+            const days = JSON.parse(localStorage.getItem('demoDays') || '{}');
+            const dateString = getLocalDateString(date);
+            AppState.meals = days[dateString] || JSON.parse(JSON.stringify(defaultMeals));
+            renderEverything();
+        }
+
         function renderEverything() {
             document.getElementById('goal-calories').value = AppState.profile.goals.calories;
             document.getElementById('goal-protein').value = AppState.profile.goals.protein;
             document.getElementById('goal-carbs').value = AppState.profile.goals.carbs;
             document.getElementById('goal-fat').value = AppState.profile.goals.fat;
+            document.getElementById('goal-weight').value = AppState.profile.goalWeight;
             document.getElementById('current-date-display').textContent = `Plan für ${AppState.selectedDate.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
             
             applyTheme();
@@ -508,18 +539,18 @@
         }
 
         function renderAllCharts() {
-            const totals = calculateTotals();
+            const totals = calculateTotals(AppState.meals);
             updateDoughnutChart('caloriesChart', totals.calories, AppState.profile.goals.calories, 'kcal');
             updateDoughnutChart('proteinChart', totals.protein, AppState.profile.goals.protein, 'g');
             updateDoughnutChart('carbsChart', totals.carbs, AppState.profile.goals.carbs, 'g');
             updateDoughnutChart('fatChart', totals.fat, AppState.profile.goals.fat, 'g');
         }
 
-        function calculateTotals() {
+        function calculateTotals(meals) {
             let totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-            for (const mealType in AppState.meals) {
-                if (Array.isArray(AppState.meals[mealType])) {
-                    AppState.meals[mealType].forEach(item => {
+            for (const mealType in meals) {
+                if (Array.isArray(meals[mealType])) {
+                    meals[mealType].forEach(item => {
                         totals.calories += item.totalCalories; totals.protein += item.totalProtein;
                         totals.carbs += item.totalCarbs; totals.fat += item.totalFat;
                     });
@@ -584,14 +615,13 @@
         function handleTabClick(e) {
             if (!e.target.matches('button[data-tab]')) return;
             AppState.profile.activeTab = e.target.dataset.tab;
-            renderMealPanels(); 
             document.querySelectorAll('#meal-tabs button').forEach(btn => {
-                btn.classList.remove('tab-active', 'text-stone-500', 'dark:text-stone-400');
-                if (btn.dataset.tab === AppState.profile.activeTab) {
-                    btn.classList.add('tab-active');
-                } else {
-                     btn.classList.add('text-stone-500', 'dark:text-stone-400');
-                }
+                btn.classList.toggle('tab-active', btn.dataset.tab === AppState.profile.activeTab);
+                btn.classList.toggle('text-stone-500', btn.dataset.tab !== AppState.profile.activeTab);
+                btn.classList.toggle('dark:text-stone-400', btn.dataset.tab !== AppState.profile.activeTab);
+            });
+             document.querySelectorAll('.meal-panel').forEach(panel => {
+                panel.classList.toggle('hidden', panel.id !== `panel-${AppState.profile.activeTab}`);
             });
             saveProfileState();
         }
@@ -608,10 +638,10 @@
         function closeDatabaseModal() { document.getElementById('database-modal').classList.remove('is-open'); }
         function openDgeModal() { document.getElementById('dge-modal').classList.add('is-open'); }
         function closeDgeModal() { document.getElementById('dge-modal').classList.remove('is-open'); }
-        function openPersonalModal() { 
+        async function openPersonalModal() { 
             document.getElementById('personal-modal').classList.add('is-open');
             renderWeightChart();
-            calculateAndRenderWeeklyAnalysis();
+            await calculateAndRenderWeeklyAnalysis();
         }
         function closePersonalModal() { document.getElementById('personal-modal').classList.remove('is-open'); }
         
@@ -635,31 +665,36 @@
         const signOutUser = () => { signOut(auth); };
 
         function getLocalDateString(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            return date.toLocaleDateString('en-CA');
         }
         
-        function loadDay(date) {
-            return new Promise((resolve, reject) => {
-                AppState.selectedDate = date;
-                const dateString = getLocalDateString(date);
-                if (dayUnsubscribe) dayUnsubscribe();
-                
+        async function loadDay(date) {
+            AppState.selectedDate = date;
+            const dayData = await getDayData(getLocalDateString(date));
+            AppState.meals = dayData || JSON.parse(JSON.stringify(defaultMeals));
+            renderEverything();
+        }
+        
+        async function getDayData(dateString) {
+            if (isDemoMode) {
+                const days = JSON.parse(localStorage.getItem('demoDays') || '{}');
+                return days[dateString];
+            }
+            if (!userId) return null;
+
+            try {
                 const docRef = doc(db, 'users', userId, 'essensplan', dateString);
-                dayUnsubscribe = onSnapshot(docRef, (snapshot) => {
-                    if(snapshot.exists()) {
-                        AppState.meals = snapshot.data().meals || JSON.parse(JSON.stringify(defaultMeals));
-                    } else {
-                        AppState.meals = JSON.parse(JSON.stringify(defaultMeals));
-                    }
-                    renderEverything();
-                    resolve();
-                }, reject);
-            });
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    return docSnap.data().meals;
+                }
+                return null;
+            } catch (error) {
+                console.error("Fehler beim Abrufen der Tagesdaten:", error);
+                return null;
+            }
         }
-        
+
         async function searchOpenFoodFacts() {
             const query = document.getElementById('food-search-input').value;
             if (query.length < 3) return;
@@ -709,17 +744,9 @@
             }
         }
 
-        const dgeData = {
-            "19 bis unter 25 Jahre": { "Männlich": { "Energie (PAL 1.4)": { "wert": "2400", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2800", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "3100", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "110", "einheit": "mg/Tag" }, "Eisen": { "wert": "11", "einheit": "mg/Tag" }, "Magnesium": { "wert": "350", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "200", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "15", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "70", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "850", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,3", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,4", "einheit": "mg/Tag" } }, "Weiblich": { "Energie (PAL 1.4)": { "wert": "1900", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2200", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2500", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "95", "einheit": "mg/Tag" }, "Eisen": { "wert": "16", "einheit": "mg/Tag" }, "Magnesium": { "wert": "300", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "200", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "12", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "60", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "700", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,0", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,1", "einheit": "mg/Tag" } } },
-            "25 bis unter 51 Jahre": { "Männlich": { "Energie (PAL 1.4)": { "wert": "2300", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2700", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "3000", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "110", "einheit": "mg/Tag" }, "Eisen": { "wert": "11", "einheit": "mg/Tag" }, "Magnesium": { "wert": "350", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "200", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "14", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "70", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "850", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,2", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,4", "einheit": "mg/Tag" } }, "Weiblich": { "Energie (PAL 1.4)": { "wert": "1800", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2100", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2400", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "95", "einheit": "mg/Tag" }, "Eisen": { "wert": "16", "einheit": "mg/Tag" }, "Magnesium": { "wert": "300", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "200", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "12", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "60", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "700", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,0", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,1", "einheit": "mg/Tag" } } },
-            "51 bis unter 65 Jahre": { "Männlich": { "Energie (PAL 1.4)": { "wert": "2200", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2500", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2800", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "110", "einheit": "mg/Tag" }, "Eisen": { "wert": "11", "einheit": "mg/Tag" }, "Magnesium": { "wert": "350", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "180", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "13", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "80", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "850", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,2", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,3", "einheit": "mg/Tag" } }, "Weiblich": { "Energie (PAL 1.4)": { "wert": "1700", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2000", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2200", "einheit": "kcal/Tag" }, "Protein": { "wert": "0,8", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "95", "einheit": "mg/Tag" }, "Eisen": { "wert": "14", "einheit": "mg/Tag" }, "Magnesium": { "wert": "300", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "180", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "12", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "65", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "700", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,0", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,0", "einheit": "mg/Tag" } } },
-            "65 Jahre und älter": { "Männlich": { "Energie (PAL 1.4)": { "wert": "2100", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "2500", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2800", "einheit": "kcal/Tag" }, "Protein": { "wert": "1,0", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "110", "einheit": "mg/Tag" }, "Eisen": { "wert": "11", "einheit": "mg/Tag" }, "Magnesium": { "wert": "350", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "180", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "12", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "80", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "800", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,1", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,3", "einheit": "mg/Tag" } }, "Weiblich": { "Energie (PAL 1.4)": { "wert": "1700", "einheit": "kcal/Tag" }, "Energie (PAL 1.6)": { "wert": "1900", "einheit": "kcal/Tag" }, "Energie (PAL 1.8)": { "wert": "2100", "einheit": "kcal/Tag" }, "Protein": { "wert": "1,0", "einheit": "g/kg KG/Tag" }, "Gesamtfett": { "wert": "30", "einheit": "% der Energie" }, "Kohlenhydrate": { "wert": ">50", "einheit": "% der Energie" }, "Ballaststoffe": { "wert": "≥30", "einheit": "g/Tag" }, "Natrium": { "wert": "1500", "einheit": "mg/Tag" }, "Vitamin C": { "wert": "95", "einheit": "mg/Tag" }, "Eisen": { "wert": "14", "einheit": "mg/Tag" }, "Magnesium": { "wert": "300", "einheit": "mg/Tag" }, "Folat": { "wert": "300", "einheit": "µg/Tag" }, "Calcium": { "wert": "1000", "einheit": "mg/Tag" }, "Jod": { "wert": "180", "einheit": "µg/Tag" }, "Vitamin D": { "wert": "20", "einheit": "µg/Tag" }, "Vitamin E": { "wert": "11", "einheit": "mg/Tag" }, "Vitamin K": { "wert": "65", "einheit": "µg/Tag" }, "Vitamin A": { "wert": "700", "einheit": "µg-RAE/Tag" }, "Vitamin B12": { "wert": "4,0", "einheit": "µg/Tag" }, "Thiamin": { "wert": "1,0", "einheit": "mg/Tag" }, "Riboflavin": { "wert": "1,0", "einheit": "mg/Tag" } } }
-        };
-
-        const defaultNutrients = ["Energie (PAL 1.4)", "Energie (PAL 1.6)", "Energie (PAL 1.8)", "Protein", "Gesamtfett", "Kohlenhydrate", "Ballaststoffe", "Natrium", "Vitamin C", "Eisen", "Magnesium"];
-
         function initDgeFilters() {
             const container = document.getElementById('dge-nutrient-filters');
+            if (!container || !dgeData) return;
             container.innerHTML = '';
             const allNutrients = Object.keys(dgeData["25 bis unter 51 Jahre"]["Männlich"]);
 
@@ -738,6 +765,7 @@
             const gender = document.getElementById('dge-gender').value;
             const ageGroup = document.getElementById('dge-age').value;
             const tableBody = document.getElementById('dge-table-body');
+            if (!tableBody || !dgeData) return;
             tableBody.innerHTML = '';
 
             const selectedNutrients = Array.from(document.querySelectorAll('.dge-nutrient-checkbox:checked')).map(cb => cb.value);
@@ -762,7 +790,90 @@
                 }
             });
         }
+        
+        function renderWeightChart() {
+            if (charts['weightChart']) {
+                charts['weightChart'].destroy();
+            }
+            const ctx = document.getElementById('weightChart').getContext('2d');
+            const history = AppState.profile.weightHistory || [];
+            
+            history.sort((a, b) => new Date(a.date) - new Date(b.date));
 
+            const labels = history.map(entry => entry.date);
+            const dataPoints = history.map(entry => entry.weight);
+            const goalWeight = AppState.profile.goalWeight;
+
+            charts['weightChart'] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Gewicht',
+                        data: dataPoints,
+                        borderColor: '#0d9488',
+                        backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }, {
+                        label: 'Zielgewicht',
+                        data: labels.map(() => goalWeight),
+                        borderColor: '#ef4444',
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                             title: {
+                                display: true,
+                                text: 'Gewicht in kg'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function calculateAndRenderWeeklyAnalysis() {
+            let totalCalories = 0, totalProtein = 0, totalCarbs = 0, totalFat = 0;
+            let daysWithData = 0;
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                const dateString = getLocalDateString(date);
+                
+                const meals = await getDayData(dateString);
+
+                if (meals) {
+                    const dayTotals = calculateTotals(meals);
+                    totalCalories += dayTotals.calories;
+                    totalProtein += dayTotals.protein;
+                    totalCarbs += dayTotals.carbs;
+                    totalFat += dayTotals.fat;
+                    if (dayTotals.calories > 0) {
+                         daysWithData++;
+                    }
+                }
+            }
+
+            const avgCalories = daysWithData > 0 ? Math.round(totalCalories / daysWithData) : 0;
+            // KORRIGIERTE BERECHNUNG: Multipliziert das Ziel nur mit der Anzahl der erfassten Tage.
+            const weeklyBalance = Math.round(totalCalories - (AppState.profile.goals.calories * daysWithData));
+            const avgProtein = daysWithData > 0 ? Math.round(totalProtein / daysWithData) : 0;
+            const avgCarbs = daysWithData > 0 ? Math.round(totalCarbs / daysWithData) : 0;
+            const avgFat = daysWithData > 0 ? Math.round(totalFat / daysWithData) : 0;
+
+            document.getElementById('weekly-avg-calories').textContent = avgCalories;
+            document.getElementById('weekly-balance').textContent = weeklyBalance > 0 ? `+${weeklyBalance}` : weeklyBalance;
+            document.getElementById('weekly-avg-macros').textContent = `P: ${avgProtein}g, KH: ${avgCarbs}g, F: ${avgFat}g`;
+        }
 
         async function initApp() {
             const firebaseConfig = {
@@ -792,25 +903,22 @@
                 if (dayUnsubscribe) dayUnsubscribe();
 
                 if (user) {
+                    isDemoMode = false;
                     userId = user.uid;
                     document.getElementById('user-info').textContent = user.displayName || user.email;
+                    document.getElementById('logout-button').textContent = "Abmelden";
                     
                     const profileRef = doc(db, 'users', userId, "essensplan", "profile");
                     
-                    const profileSnap = await getDoc(profileRef);
-                    if (!profileSnap.exists()) {
-                        await setDoc(profileRef, defaultProfile);
-                        AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
-                    } else {
-                         AppState.profile = { ...defaultProfile, ...profileSnap.data() };
-                    }
-
                     profileUnsubscribe = onSnapshot(profileRef, (snapshot) => {
                          if (snapshot.exists()) {
                             AppState.profile = { ...defaultProfile, ...snapshot.data()};
-                            applyTheme();
-                            renderDatabaseTable();
-                            renderAllCharts();
+                            renderEverything();
+                        } else {
+                            setDoc(profileRef, defaultProfile).then(() => {
+                                 AppState.profile = JSON.parse(JSON.stringify(defaultProfile));
+                                 renderEverything();
+                            });
                         }
                     });
                     
@@ -821,13 +929,68 @@
                     
                 } else {
                     userId = null;
-                    appContainer.classList.remove('active');
-                    loginScreen.classList.add('active');
+                    if(!isDemoMode) {
+                        appContainer.classList.remove('active');
+                        loginScreen.classList.add('active');
+                    }
                 }
             });
 
+            document.getElementById('add-weight-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const weightInput = document.getElementById('current-weight');
+                const goalWeightInput = document.getElementById('goal-weight');
+                
+                const newWeight = parseFloat(weightInput.value);
+                const newGoalWeight = parseFloat(goalWeightInput.value);
+
+                if (newWeight && newWeight > 0) {
+                    const dateString = getLocalDateString(new Date());
+                    
+                    if (!AppState.profile.weightHistory) {
+                        AppState.profile.weightHistory = [];
+                    }
+
+                    const existingEntryIndex = AppState.profile.weightHistory.findIndex(entry => entry.date === dateString);
+
+                    if (existingEntryIndex > -1) {
+                        AppState.profile.weightHistory[existingEntryIndex].weight = newWeight;
+                    } else {
+                        AppState.profile.weightHistory.push({ date: dateString, weight: newWeight });
+                    }
+                    weightInput.value = '';
+                }
+
+                if(newGoalWeight && newGoalWeight > 0) {
+                    AppState.profile.goalWeight = newGoalWeight;
+                }
+
+                saveProfileState();
+                renderWeightChart();
+            });
+
             document.getElementById('login-button').addEventListener('click', signIn);
-            document.getElementById('logout-button').addEventListener('click', signOutUser);
+
+            document.getElementById('logout-button').addEventListener('click', () => {
+                if (isDemoMode) {
+                    isDemoMode = false;
+                    localStorage.removeItem('demoProfile');
+                    localStorage.removeItem('demoDays');
+                    window.location.reload();
+                } else {
+                    signOutUser();
+                }
+            });
+
+            document.getElementById('demo-button').addEventListener('click', () => {
+                isDemoMode = true;
+                document.getElementById('login-screen').classList.remove('active');
+                document.getElementById('app-container').classList.add('active');
+                document.getElementById('user-info').textContent = "Demo Modus";
+                document.getElementById('logout-button').textContent = "Demo beenden";
+                loadStateFromLocalStorage(new Date());
+            });
+
             document.getElementById('meal-tabs').addEventListener('click', handleTabClick);
             document.getElementById('add-food-form').addEventListener('submit', addFoodItemToDatabase);
             document.getElementById('daily-summary').addEventListener('input', handleGoalChange);
