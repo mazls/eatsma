@@ -72,7 +72,7 @@ Um die Anwendung für sich selbst zu nutzen, müssen Sie ein eigenes Firebase-Pr
 
 Die App nutzt JavaScript-Module. Aus Sicherheitsgründen blockieren die meisten Browser das Laden dieser Module, wenn Sie die `index.html` direkt als Datei (`file:///...`) öffnen. Sie müssen die App daher über einen lokalen Webserver aufrufen.
 
-Der einfachste Weg ist mit Python (ist auf den meisten Systemen vorinstalliert):
+Der einfachste Weg ist mit Python:
 
 1.  **Kommandozeile öffnen:**
     * Öffnen Sie die Kommandozeile (auf Windows `cmd`, auf Mac/Linux das `Terminal`).
@@ -90,7 +90,7 @@ Der einfachste Weg ist mit Python (ist auf den meisten Systemen vorinstalliert):
 4.  **App im Browser öffnen:**
     * Öffnen Sie Ihren Webbrowser und gehen Sie zur folgenden Adresse:
         ```
-        http://localhost:8000
+        http://localhost:8000/index.html?
         ```
 
 ## Veröffentlichung (GitHub Pages)
